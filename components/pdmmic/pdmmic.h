@@ -50,8 +50,8 @@
 #define SAMPLE_RATE 48000
 
 // Wiring
-#define PDMMIC_CLK_PIN   GPIO_NUM_26
-#define PDMMIC_DATA_PIN  GPIO_NUM_35
+#define PDMMIC_CLK_PIN   CONFIG_PDMMIC_CLK_PIN   //_GPIO_NUM_26
+#define PDMMIC_DATA_PIN  CONFIG_PDMMIC_DATA_PIN  //_GPIO_NUM_35
 
 // RTOS task
 #define PDMMIC_CLIENT_TASK_NAME        "pdmmic_client_task"

@@ -1,21 +1,63 @@
-menu "AlarmDecoder UI Configuration"
+menu "AlarmDecoderUI Configuration"
 
-config ESP_WIFI_SSID
-    string "WiFi SSID"
-    default "myssid"
-    help
-    SSID (network name) for the example to connect to.
+  menu "WiFi settings"
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+        SSID (network name) for the example to connect to.
 
-config ESP_WIFI_PASSWORD
-    string "WiFi Password"
-    default "mypassword"
-    help
-    WiFi password (WPA or WPA2) for the example to use.
-    
-config AD2_CAM1_URL
-    string "CAM1 URL"
-    default "http://10.1.10.25:8081/"
-    help
-    URL for CAM1 MJPG stream
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+        WiFi password (WPA or WPA2) for the example to use.
+
+    config AD2_CAM1_URL
+        string "CAM1 URL"
+        default "http://10.1.10.25:8081/"
+        help
+        URL for CAM1 MJPG stream
+  endmenu
+
+  menu "uSD Card reader config"
+    config SPISD_PIN_NUM_MISO
+        int "MISO PIN"
+        default 12
+        help
+        GPIO Pin connected to the MISO pin
+
+    config SPISD_PIN_NUM_MOSI
+        int "MOSI PIN"
+        default 13
+        help
+        GPIO Pin connected to the MOSI pin
+
+    config SPISD_PIN_NUM_CLK
+        int "CLK PIN"
+        default 14
+        help
+        GPIO Pin connected to the CLK pin
+
+    config SPISD_PIN_NUM_CS
+        int "CS PIN"
+        default 15 
+        help
+        GPIO Pin connected to the CS pin
+  endmenu
+          
+  menu "MEMS microphone config"
+    config PDMMIC_CLK_PIN
+        int "PDM CLOCK PIN"
+        default 26
+        help
+        GPIO Pin connected to clock input pin of the MEMS device.
+
+    config PDMMIC_DATA_PIN
+        int "PDM DATA PIN"
+        default 35
+        help
+        GPIO Pin connected to PDM output pin of the MEMS device.          
+  endmenu
 
 endmenu
