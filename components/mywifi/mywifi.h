@@ -1,10 +1,10 @@
 /**
- *  @file    mysdcard.h
+ *  @file    myswifi.h
  *  @author  Sean Mathews <coder@f34r.com>
  *  @date    10/01/2018
  *  @version 1.0
  *
- *  @brief Private uSD card functions for the AD2ESP32UI
+ *  @brief Private wifi/network functions for the AD2ESP32UI
  *
  *  @copyright Copyright (C) 2018 Nu Tech Software Solutions, Inc.
  *
@@ -22,28 +22,33 @@
  *
  */
 
-#ifndef _MYSDCARD_H_
-#define _MYSDCARD_H_
+#ifndef _MYWIFI_H_
+#define _MYWIFI_H_
+
 
 /*
  * Defines
  */
 
-// Wiring
-#define SPISD_PIN_NUM_MISO  GPIO_NUM_12 // GREEN   D0 | D0 
-#define SPISD_PIN_NUM_MOSI  GPIO_NUM_13 // YELLOW CMD | DI
-#define SPISD_PIN_NUM_CLK   GPIO_NUM_14 // PURPLE CLK
-#define SPISD_PIN_NUM_CS    GPIO_NUM_15 // WHITE   D3 | CS
+/* WIFI settings */
+#define AD2ESP32UI_WIFI_SSID          CONFIG_ESP_WIFI_SSID
+#define AD2ESP32UI_WIFI_PASS          CONFIG_ESP_WIFI_PASSWORD
+#define AD2ESP32UI_MAXIMUM_RETRY      10
+#define MAX_HTTP_RECV_BUFFER          512
+
+/* WEBCAM MJPEG collector task */
+#define MJPEG_CLIENT_TASK_NAME        "mjpeg_client_task"
+#define MJPEG_CLIENT_TASK_NAME_STACK  10240
+
 
 /*
  * Prototypes
  */
+// PUBLIC WIFI FUNCTIONS
+void mywifi_init();
 
-// start sdcard / vfat driver
-bool mysdcard_init();
-
-// stop free sdcard driver resources
-void mysdcard_uninit();
+// PUBLIC CAM STREAM FUNCTIONS
+void mjpegcam_init();
 
 
 #endif

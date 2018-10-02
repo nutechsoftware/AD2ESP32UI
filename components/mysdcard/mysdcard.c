@@ -31,9 +31,6 @@
 #include <freertos/FreeRTOS.h>
 
 // esp-idf general
-#include <soc/gpio_struct.h>
-#include <esp_system.h>
-#include <esp_event_loop.h>
 #include <esp_log.h>
 #include <esp_err.h>
 
@@ -54,12 +51,13 @@
 // Debug tag
 static const char *TAG = "MYSDCARD";
 sdmmc_card_t *card;
+
  
 /*
  * Start the esp32 uSD card driver and connect
  * it to the AlarmDecoder ESP32 Display board pins
  */
-bool mysdcard_start() {
+bool mysdcard_init() {
   ESP_LOGI(TAG, "uSD start mounting HSPI on pins");
   
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
@@ -104,7 +102,7 @@ bool mysdcard_start() {
   return true;
 }
 
-void mysdcard_stop() {
+void mysdcard_uninit() {
   // All done, unmount partition and disable SDMMC or SPI peripheral
   esp_vfs_fat_sdmmc_unmount();
   ESP_LOGI(TAG, "uSD unmounted");  
