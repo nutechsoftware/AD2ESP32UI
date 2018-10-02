@@ -1,0 +1,21 @@
+menu "AlarmDecoder UI Configuration"
+
+config ESP_WIFI_SSID
+    string "WiFi SSID"
+    default "myssid"
+    help
+    SSID (network name) for the example to connect to.
+
+config ESP_WIFI_PASSWORD
+    string "WiFi Password"
+    default "mypassword"
+    help
+    WiFi password (WPA or WPA2) for the example to use.
+    
+config AD2_CAM1_URL
+    string "CAM1 URL"
+    default "http://10.1.10.25:8081/"
+    help
+    URL for CAM1 MJPG stream
+
+endmenu
