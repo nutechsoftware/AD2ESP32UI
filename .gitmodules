@@ -1,0 +1,6 @@
+[submodule "components/esp32toft81x"]
+	path = components/esp32toft81x
+	url = https://github.com/nutechsoftware/esp32toft81x
+[submodule "components/multipart-parser-c/multipart-parser-c"]
+	path = components/multipart-parser-c/multipart-parser-c
+	url = https://github.com/iafonov/multipart-parser-c
