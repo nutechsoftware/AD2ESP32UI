@@ -10,7 +10,7 @@ The AD2ESP32UI platform has the following specifications.
 - External connections for i2c, uart or GPIO
 
 ## Getting the code
-- git clone --recursive https://github.com/nutechsoftware/ad2esp32tsplatform
+- git clone --recursive https://github.com/nutechsoftware/AD2ESP32UI.git
 
 ## Configuring
 - Under menuconfig in **Serial flasher config** set the **Default serial port**
