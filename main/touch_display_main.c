@@ -22,6 +22,7 @@
  *
  */
 
+// std
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/unistd.h>
@@ -29,73 +30,80 @@
 #include <sys/dirent.h>
 #include <string.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
+// FreeRTOS
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/event_groups.h>
 
-#include "soc/gpio_struct.h"
+// esp-idf general
+#include <soc/gpio_struct.h>
+#include <esp_system.h>
+#include <esp_event_loop.h>
+#include <esp_log.h>
+#include <esp_err.h>
 
-#include "esp_system.h"
-#include "esp_spi_flash.h"
-#include "esp_event_loop.h"
-#include "esp_log.h"
-#include "esp_err.h"
-#include "esp_vfs_fat.h"
+// drivers
+#include <driver/gpio.h>
+#include <driver/spi_master.h>
+#include <driver/i2s.h>
 
-#include "driver/gpio.h"
-#include "driver/spi_master.h"
-#include "driver/sdmmc_host.h"
-#include "driver/sdspi_host.h"
-#include "driver/i2s.h"
-#include "sdmmc_cmd.h"
-#include "nvs_flash.h"
-#include "esp_wifi.h"
-#include "esp_http_client.h"
+// components
+/// esp-idf specific
+#include <esp_wifi.h>
+#include <esp_http_client.h>
+#include <nvs_flash.h>
+#include <esp_spi_flash.h>
+
+/// private
 #include <ft81x.h>
 #include <pdmmic.h>
 #include <multipart_parser.h>
+#include <mysdcard.h>
+
 /*
  * Defines
  */ 
+ /* WIFI settings */
+ #define EXAMPLE_ESP_WIFI_SSID         CONFIG_ESP_WIFI_SSID
+ #define EXAMPLE_ESP_WIFI_PASS         CONFIG_ESP_WIFI_PASSWORD
+ #define EXAMPLE_ESP_MAXIMUM_RETRY     10
+ #define MAX_HTTP_RECV_BUFFER          512
+
+ /* WEBCAM MJPEG collector task */
+ #define MJPEG_CLIENT_TASK_NAME        "mjpeg_client_task"
+ #define MJPEG_CLIENT_TASK_NAME_STACK  10240
 
 /*
  * Constants/Statics
  */ 
 // Debug tag
-static const char* TAG = "AD2TOUCH";
+static const char* TAG = "AD2ESP32UI";
+
+// VSPI IPC mutex
+static SemaphoreHandle_t s_vspi_mutex;
+
+// FT81x state vars
 extern struct ft81x_ctouch_t ft81x_ctouch;
 extern struct ft81x_touch_t ft81x_touch;
 extern uint32_t mf_wp;
 
-//WIFI 
+// WIFI state vars
 static int s_retry_num = 0;
+
+/// The event group allows multiple bits for each event, but we only care about one event
+/// * - are we connected to the AP with an IP?
+const int WIFI_CONNECTED_BIT = BIT0;
 
 // Streaming jpeg image ready flag
 static uint8_t mjpeg_spool_ready = 0;
-static SemaphoreHandle_t s_ipc_mutex;
-static uint16_t debug_size = 0;
-
-/* The event group allows multiple bits for each event, but we only care about one event 
- * - are we connected to the AP with an IP? */
-const int WIFI_CONNECTED_BIT = BIT0;
+static uint16_t mjpeg_last_size = 0;
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
-/* WIFI settings */
-#define EXAMPLE_ESP_WIFI_SSID         CONFIG_ESP_WIFI_SSID
-#define EXAMPLE_ESP_WIFI_PASS         CONFIG_ESP_WIFI_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY     10
-#define MAX_HTTP_RECV_BUFFER          512
-
-/* WEBCAM MJPEG collector task */
-#define MJPEG_CLIENT_TASK_NAME        "mjpeg_client_task"
-#define MJPEG_CLIENT_TASK_NAME_STACK  10240
-
 /*
  * Types
  */
-
  
 /*
  * Prototypes
@@ -106,10 +114,6 @@ bool enable_gpio_debug_pin();
 // restart the esp32
 void restart_esp32();
 
-// tests sdcard using spi interface HSPI
-void test_spi_sdcard();
-bool start_sdcard(sdmmc_card_t *card);
-void stop_sdcard();
 // tests spooling video from SD card to FT813
 void test_video();
 
@@ -143,7 +147,7 @@ int read_header_value(multipart_parser* p, const char *at, size_t length)
 static uint32_t camimagesize = 0;
 int read_part_data_end(multipart_parser* p) {
   
-     xSemaphoreTake(s_ipc_mutex, portMAX_DELAY);
+     xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
      // We have loaded the entire image into MEDIA FIFO 
      // but we must be sure our data is aligned to 32 bits.
@@ -192,15 +196,15 @@ int read_part_data_end(multipart_parser* p) {
      uint32_t width = ft81x_rd32(widthptr);
      uint32_t height = ft81x_rd32(heightptr);
 #if 1
-     ESP_LOGW(TAG, "loadimage wp:0x%08x ptr:0x%08x width: %d height: %d size: %d", mf_wp, img, width, height, debug_size);
+     ESP_LOGW(TAG, "loadimage wp:0x%08x ptr:0x%08x width: %d height: %d size: %d", mf_wp, img, width, height, mjpeg_last_size);
      //printf("loadimage wp:0x%06x ptr:0x%06x width: %d height: %d\n", mf_wp, img, width, height);
 #endif
 
-     debug_size = 0;
+     mjpeg_last_size = 0;
      
      camimagesize = 0;
 
-     xSemaphoreGive(s_ipc_mutex);
+     xSemaphoreGive(s_vspi_mutex);
 
 #if 1 // RACE COND TEST
      // Sleep
@@ -217,7 +221,7 @@ int read_part_data(multipart_parser* p, const char *at, size_t length)
   if(!length)
      return 0;
 
-  xSemaphoreTake(s_ipc_mutex, portMAX_DELAY);
+  xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
   if (mjpeg_spool_ready) {
     //// Send the image to the media fifo
@@ -225,10 +229,10 @@ int read_part_data(multipart_parser* p, const char *at, size_t length)
     camimagesize+=length;
   }
 
-  debug_size+=length;
-  //ESP_LOGI(TAG, "httpread size: %d len: %d)",debug_size, length);
+  mjpeg_last_size+=length;
+  //ESP_LOGI(TAG, "httpread size: %d len: %d)",mjpeg_last_size, length);
 
-  xSemaphoreGive(s_ipc_mutex);
+  xSemaphoreGive(s_vspi_mutex);
 
 #if 0
    printf("VDATA %d: ", length);
@@ -321,7 +325,7 @@ void app_main()
     // Disable buffering on stdout
     setvbuf(stdout, NULL, _IONBF, 0);
     
-    printf("AD2TS STARTING.\n");
+    printf("%s STARTING app_main()\n", TAG);
 
     /* Print chip information */
     esp_chip_info_t chip_info;
@@ -347,12 +351,6 @@ void app_main()
     }
     ESP_ERROR_CHECK(ret);
     
-#if 0
-    // delay test before spi to allow power on of device and usb connect time
-    ESP_LOGW(TAG, "initGPU: delay");
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-#endif
-
     // Initialize our SPI driver on ESP32 VSPI pins for the FT81X
     res = ft81x_initSPI();
     if (!res) {
@@ -362,7 +360,7 @@ void app_main()
       printf("ESP32 SPI init success\n");
     }
 
-#if 1 // Test GPU
+#if 1 // Enable/Disable GPU
     // Initialize the FT81X GPU
     res = ft81x_initGPU();
     if (!res) {
@@ -373,8 +371,7 @@ void app_main()
     }
 #endif
 
-    // Test SD CARD
-    //test_spi_sdcard();
+    // main app
     test_video();
 
     // Testing done
@@ -412,189 +409,6 @@ bool enable_gpio_debug_pin() {
     return false;
   }
   return true;
-}
-
-bool start_sdcard(sdmmc_card_t* card) {
-  #define PIN_NUM_MISO 12 // GREEN   D0 | D0 
-  #define PIN_NUM_MOSI 13 // YELLOW CMD | DI
-  #define PIN_NUM_CLK  14 // PURPLE CLK
-  #define PIN_NUM_CS   15 // WHITE   D3 | CS
-
-  ESP_LOGI(TAG, "Initializing SD card using SPI");
-
-  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-  slot_config.gpio_miso = PIN_NUM_MISO;
-  slot_config.gpio_mosi = PIN_NUM_MOSI;
-  slot_config.gpio_sck  = PIN_NUM_CLK;
-  slot_config.gpio_cs   = PIN_NUM_CS;
-  // This initializes the slot without card detect (CD) and write protect (WP) signals.
-  // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-
-  // Options for mounting the filesystem.
-  // If format_if_mount_failed is set to true, SD card will be partitioned and
-  // formatted in case when mounting fails.
-  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-     .format_if_mount_failed = false,
-     .max_files = 5,
-     .allocation_unit_size = 16 * 1024
-  };
-
-  // Use settings defined above to initialize SD card and mount FAT filesystem.
-  // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
-  // Please check its source code and implement error recovery when developing
-  // production applications.
-
-  esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-
-  if (ret != ESP_OK) {
-     if (ret == ESP_FAIL) {
-         ESP_LOGE(TAG, "Failed to mount filesystem. "
-             "If you want the card to be formatted, set format_if_mount_failed = true.");
-     } else {
-         ESP_LOGE(TAG, "Failed to initialize the card (%s). "
-             "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
-     }
-     return false;
-  }
-
-  // Card has been initialized, print its properties
-  sdmmc_card_print_info(stdout, card);
-  return true;
-}
-
-void stop_sdcard() {
-  // All done, unmount partition and disable SDMMC or SPI peripheral
-  esp_vfs_fat_sdmmc_unmount();
-  ESP_LOGI(TAG, "Card unmounted");  
-}
-
-void test_spi_sdcard() {
-
-  #define PIN_NUM_MISO 12 // GREEN   D0
-  #define PIN_NUM_MOSI 13 // YELLOW CMD
-  #define PIN_NUM_CLK  14 // PURPLE CLK
-  #define PIN_NUM_CS   15 // WHITE   D3
-
-  ESP_LOGI(TAG, "Initializing SD card using SPI");
-
-  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-  host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-  
-  slot_config.gpio_miso = PIN_NUM_MISO;
-  slot_config.gpio_mosi = PIN_NUM_MOSI;
-  slot_config.gpio_sck  = PIN_NUM_CLK;
-  slot_config.gpio_cs   = PIN_NUM_CS;
-  // This initializes the slot without card detect (CD) and write protect (WP) signals.
-  // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-
-  // Options for mounting the filesystem.
-  // If format_if_mount_failed is set to true, SD card will be partitioned and
-  // formatted in case when mounting fails.
-  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-     .format_if_mount_failed = false,
-     .max_files = 5,
-     .allocation_unit_size = 16 * 1024
-  };
-
-  // Use settings defined above to initialize SD card and mount FAT filesystem.
-  // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
-  // Please check its source code and implement error recovery when developing
-  // production applications.
-  sdmmc_card_t* card;
-
-#if 0
-  // SPI Debugging
-  gpio_set_level(GPIO_NUM_16, 1);
-  gpio_set_level(GPIO_NUM_16, 0);
-#endif
-
-  esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-
-#if 0
-  // SPI Debugging
-  gpio_set_level(GPIO_NUM_16, 1);
-  gpio_set_level(GPIO_NUM_16, 0);
-#endif
-
-  if (ret != ESP_OK) {
-     if (ret == ESP_FAIL) {
-         ESP_LOGE(TAG, "Failed to mount filesystem. "
-             "If you want the card to be formatted, set format_if_mount_failed = true.");
-     } else {
-         ESP_LOGE(TAG, "Failed to initialize the card (%s). "
-             "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
-     }
-     return;
-  }
-
-  // Card has been initialized, print its properties
-  sdmmc_card_print_info(stdout, card);
-
-  // Use POSIX and C standard library functions to work with files.
-  // First create a file.
-  ESP_LOGI(TAG, "Opening file");
-  FILE* f = fopen("/sdcard/hello.txt", "w");
-  if (f == NULL) {
-     ESP_LOGE(TAG, "Failed to open file for writing");
-     return;
-  }
-  fprintf(f, "Hello %s!\n", card->cid.name);
-  fclose(f);
-  ESP_LOGI(TAG, "File written");
-
-  // Check if destination file exists before renaming
-  struct stat st;
-  if (stat("/sdcard/foo.txt", &st) == 0) {
-     // Delete it if it exists
-     unlink("/sdcard/foo.txt");
-  }
-
-  // Rename original file
-  ESP_LOGI(TAG, "Renaming file");
-  if (rename("/sdcard/hello.txt", "/sdcard/foo.txt") != 0) {
-     ESP_LOGE(TAG, "Rename failed");
-     return;
-  }
-
-  // Open renamed file for reading
-  ESP_LOGI(TAG, "Reading file");
-  f = fopen("/sdcard/foo.txt", "r");
-  if (f == NULL) {
-     ESP_LOGE(TAG, "Failed to open file for reading");
-     return;
-  }
-  char line[64];
-  fgets(line, sizeof(line), f);
-  fclose(f);
-  // strip newline
-  char* pos = strchr(line, '\n');
-  if (pos) {
-     *pos = '\0';
-  }
-  ESP_LOGI(TAG, "Read from file: '%s'", line);
-
-  // List files in path
-  ESP_LOGI(TAG, "Reading directory listing");
-  DIR *dp;
-  struct dirent *ep;     
-  dp = opendir ("/sdcard/DCIM");
-
-  if (dp != NULL)
-  {
-    while ((ep = readdir (dp)))
-      ESP_LOGI(TAG, "File : %s", ep->d_name);
-
-    (void) closedir (dp);
-  }
-  else
-     ESP_LOGE(TAG, "Couldn't open the directory");
- 
-  
-  // All done, unmount partition and disable SDMMC or SPI peripheral
-  esp_vfs_fat_sdmmc_unmount();
-  ESP_LOGI(TAG, "Card unmounted");
 }
 
 void test_video() {
@@ -717,12 +531,11 @@ void test_video() {
       ESP_LOGI(TAG, "create thread %s failed", MJPEG_CLIENT_TASK_NAME);
   }
 
-  // Start our SD Card
-  sdmmc_card_t card;  
-  start_sdcard(&card);
+  // Start uSD card  
+  mysdcard_start();
 
-  /* initialize mutex */
-  s_ipc_mutex = xSemaphoreCreateMutex();
+  /* initialize vspi access mutex for shared access to the FT81X */
+  s_vspi_mutex = xSemaphoreCreateMutex();
 
   ft81x_wr(REG_PWM_DUTY, 22);
 
@@ -743,7 +556,7 @@ void test_video() {
 
 
   do {
-    xSemaphoreTake(s_ipc_mutex, portMAX_DELAY);
+    xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
     //// let everyone know we are ready for media fifo spooling to start
     mjpeg_spool_ready = 1;
@@ -818,9 +631,9 @@ void test_video() {
 
     ft81x_wait_finish();
 
-    xSemaphoreGive(s_ipc_mutex);
+    xSemaphoreGive(s_vspi_mutex);
 
-#if 1 // RACE COND TEST 
+#if 0 // RACE COND TEST 
     // Sleep
     vTaskDelay(200 / portTICK_PERIOD_MS);
 #endif
@@ -828,6 +641,8 @@ void test_video() {
   } while(1);
 #endif
 
+  // stop uSD card
+  mysdcard_stop();
 }
 
 static esp_err_t event_handler(void *ctx, system_event_t *event)
