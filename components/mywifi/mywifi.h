@@ -26,7 +26,7 @@
 #define _MYWIFI_H_
 
 
-/*
+/**
  * Defines
  */
 
@@ -41,14 +41,20 @@
 #define MJPEG_CLIENT_TASK_NAME_STACK  10240
 
 
-/*
- * Prototypes
+/**
+ * Public Prototypes
  */
+ 
 // PUBLIC WIFI FUNCTIONS
-void mywifi_init();
+bool mywifi_init();
+bool mywifi_start();
+bool mywifi_stop();
+bool mywifi_deinit();
 
 // PUBLIC CAM STREAM FUNCTIONS
-void mjpegcam_init();
-
+bool mjpegcam_init();
+bool mjpegcam_start();
+bool mjpegcam_stop();
+bool mjpegcam_deinit();
 
 #endif

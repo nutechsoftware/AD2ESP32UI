@@ -45,20 +45,36 @@
 // private
 #include <mysdcard.h>
 
-/*
+/**
  * Constants/Statics/Globals
  */
+ 
 // Debug tag
 static const char *TAG = "MYSDCARD";
 sdmmc_card_t *card;
 
- 
-/*
+
+/***************************
+ * MYSDCARD FUNCTIONS
+ */
+  
+/**
  * Start the esp32 uSD card driver and connect
  * it to the AlarmDecoder ESP32 Display board pins
  */
-bool mysdcard_init() {
-  ESP_LOGI(TAG, "uSD start mounting HSPI on pins");
+bool mysdcard_init() 
+{
+  ESP_LOGI(TAG, "INIT");
+  
+  return true;
+}
+
+/**
+ * start the sd card driver
+ */
+bool mysdcard_start()
+{
+  ESP_LOGI(TAG, "START");
   
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 
@@ -102,8 +118,25 @@ bool mysdcard_init() {
   return true;
 }
 
-void mysdcard_uninit() {
-  // All done, unmount partition and disable SDMMC or SPI peripheral
-  esp_vfs_fat_sdmmc_unmount();
-  ESP_LOGI(TAG, "uSD unmounted");  
+/**
+ * stop the sd card driver
+ */
+bool mysdcard_stop()
+{  
+    ESP_LOGI(TAG, "STOP");
+    
+    // All done, unmount partition and disable SDMMC or SPI peripheral
+    esp_vfs_fat_sdmmc_unmount();
+    
+    return true;
+}
+
+/**
+ * close the driver
+ */
+bool mysdcard_deinit() 
+{    
+    ESP_LOGI(TAG, "DEINIT");
+   
+    return true;
 }

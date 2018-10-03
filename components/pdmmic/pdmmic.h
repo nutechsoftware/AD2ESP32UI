@@ -31,7 +31,7 @@
 #ifndef _PDMMIC_H_
 #define _PDMMIC_H_
 
-/*
+/**
  * Defines
  */
 
@@ -47,7 +47,9 @@
 #define BUF_LENGTH 250
 
 // Default i2c sample rate
-#define SAMPLE_RATE 48000
+#define PDM_LP_SAMPLE_RATE  8000   // 507.9kHz LOW POWER 270uA
+#define PDM_SP_SAMPLE_RATE 24000   // 1.524MHz STANDARD 700uA
+#define PDM_US_SAMPLE_RATE 48000   // 3.2MHz ULTRASONIC 1000uA
 
 // Wiring
 #define PDMMIC_CLK_PIN   CONFIG_PDMMIC_CLK_PIN   //_GPIO_NUM_26
@@ -58,15 +60,21 @@
 #define PDMMIC_CLIENT_TASK_NAME_STACK  5120
 
 
-/*
- * Prototypes
+/**
+ * Public Prototypes
  */
 
 // Initialize the ESP32 i2c device driver and connect them to the pins for the MEMS device
 bool pdmmic_init();
 
 // Start processing PDM data
-bool pdmmic_start();
+bool pdmmic_start(uint32_t rate);
+
+// Stop processing PDM data
+bool pdmmic_stop();
+
+// stop free pdmmic driver resources
+void pdmmic_deinit();
 
 
 #endif

@@ -48,9 +48,10 @@
 #include <mywifi.h>
 #include <ft81x.h>
 
-/*
+/**
  * Constants/Statics/Globals
  */
+ 
 // Debug tag
 static const char *TAG = "MYWIFI";
 
@@ -63,6 +64,9 @@ const int WIFI_CONNECTED_BIT = BIT0;
 // Streaming jpeg image ready flag
 uint8_t mjpeg_spool_ready = 0;
 uint16_t mjpeg_last_size = 0;
+
+// mjpeg stream collector task handle
+xTaskHandle mjpeg_client_handle = NULL;    
 
 // FreeRTOS event group for signaling ex. connect/disconnect
 EventGroupHandle_t s_wifi_event_group;
@@ -86,13 +90,14 @@ int read_part_data(multipart_parser* p, const char *at, size_t length);
 int read_part_data_end(multipart_parser* p);
 esp_err_t _http_event_handler(esp_http_client_event_t *evt);
  
-/* Root cert for howsmyssl.com, taken from howsmyssl_com_root_cert.pem
-   The PEM file was extracted from the output of this command:
-   openssl s_client -showcerts -connect www.howsmyssl.com:443 </dev/null
-   The CA root cert is the last cert given in the chain of certs.
-   To embed it in the app binary, the PEM file is named
-   in the component.mk COMPONENT_EMBED_TXTFILES variable.
-*/
+/**
+ * Root cert for howsmyssl.com, taken from howsmyssl_com_root_cert.pem
+ * The PEM file was extracted from the output of this command:
+ * openssl s_client -showcerts -connect www.howsmyssl.com:443 </dev/null
+ * The CA root cert is the last cert given in the chain of certs.
+ * To embed it in the app binary, the PEM file is named
+ * in the component.mk COMPONENT_EMBED_TXTFILES variable.
+ */
 extern const char howsmyssl_com_root_cert_pem_start[] asm("_binary_howsmyssl_com_root_cert_pem_start");
 extern const char howsmyssl_com_root_cert_pem_end[]   asm("_binary_howsmyssl_com_root_cert_pem_end");
 
@@ -101,12 +106,12 @@ extern const char howsmyssl_com_root_cert_pem_end[]   asm("_binary_howsmyssl_com
  * WIFI CONNECTION FUNCTIONS
  */
  
-/*
- * initialize the wifi and start a connection
+/**
+ * Initialize the wifi driver
  */
-void mywifi_init()
+bool mywifi_init()
 {
-    ESP_LOGI(TAG, "STARTING WIFI CLIENT");
+    ESP_LOGI(TAG, "ESP32 Wifi driver init");
       
     s_wifi_event_group = xEventGroupCreate();
 
@@ -124,16 +129,42 @@ void mywifi_init()
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
-    ESP_ERROR_CHECK(esp_wifi_start() );
-
-    ESP_LOGI(TAG, "mywifi_init finished.");
-    ESP_LOGI(TAG, "connect to ap SSID:%s",
-             AD2ESP32UI_WIFI_SSID);
+ 
+    return true;
 }
 
+/**
+ * Connect to AP
+ */
+bool mywifi_start() 
+{
+    ESP_ERROR_CHECK(esp_wifi_start() );
+    ESP_LOGI(TAG, "connect to ap SSID:%s",
+             AD2ESP32UI_WIFI_SSID);
+    return true;             
+}
 
 /**
- * wait blocking till connected letting other taskss run.
+ * Disconnect from AP
+ */
+bool mywifi_stop() 
+{
+    ESP_ERROR_CHECK(esp_wifi_stop() ); 
+    ESP_LOGI(TAG, "disconnect from SSID:%s",
+             AD2ESP32UI_WIFI_SSID);
+    return true;             
+}
+
+/**
+ * Close the driver
+ */
+bool mywifi_deinit()
+{
+    return true;
+}
+
+/**
+ * Wait blocking till connected letting other taskss run.
  */
 void app_wifi_wait_connected()
 {
@@ -141,7 +172,7 @@ void app_wifi_wait_connected()
 }
 
 /**
- * event processing for wifi state
+ * Event processing for wifi state
  */
 static esp_err_t mywifi_event_handler(void *ctx, system_event_t *event)
 {
@@ -178,93 +209,130 @@ static esp_err_t mywifi_event_handler(void *ctx, system_event_t *event)
  */
 
 /**
- * Start the mjpeg stream collector task
+ * Initialize the mjpeg stream collector task
  */
-void mjpegcam_init() {
-  esp_err_t ret;
+bool mjpegcam_init() 
+{
+    return true;
+}
 
-  // Start mjpeg socket client thread
-  xTaskHandle mjpeg_client_handle;    
-  ret = xTaskCreate(mjpeg_client_task,
-                    MJPEG_CLIENT_TASK_NAME,
-                    MJPEG_CLIENT_TASK_NAME_STACK,
-                    NULL,
-                    8,
-                    &mjpeg_client_handle);
+/**
+ * Start the task
+ */
+bool mjpegcam_start()
+{
+    esp_err_t ret;
 
-  if (ret != pdPASS)  {
-      ESP_LOGI(TAG, "create thread %s failed", MJPEG_CLIENT_TASK_NAME);
-  }
+    // Start mjpeg socket client thread
+
+    ret = xTaskCreate(mjpeg_client_task,
+                      MJPEG_CLIENT_TASK_NAME,
+                      MJPEG_CLIENT_TASK_NAME_STACK,
+                      NULL,
+                      8,
+                      &mjpeg_client_handle);
+
+    if (ret != pdPASS)  {
+        ESP_LOGI(TAG, "create thread %s failed", MJPEG_CLIENT_TASK_NAME);
+    }
+    
+    return true;
 }
 
 
- /**
-  * Attempt to stay connected to a url
-  * and capture the multipart mjpeg stream
-  * converting each frame into a MEDIA FIFO 
-  * update to a pointer in the FT81X memory.
-  */
- static void mjpeg_client_task(void *p)
- {
-   ESP_LOGI(TAG, "mjpeg_client_task start");
-   
-   // setup the multipart parser
-   multipart_parser_settings callbacks;
-   memset(&callbacks, 0, sizeof(multipart_parser_settings));
+/**
+ * Stop the task
+ */
+bool mjpegcam_stop()
+{
+    ESP_LOGI(TAG, "STOP");  
+    
+    // if a processing task is running stop it.
+    if (mjpeg_client_handle!= NULL) {
+        vTaskDelete(mjpeg_client_handle);
+        mjpeg_client_handle = NULL;
+    }
 
-   callbacks.on_header_field = read_header_name;
-   callbacks.on_header_value = read_header_value;
-   callbacks.on_part_data = read_part_data;
-   callbacks.on_part_data_end = read_part_data_end;
+    return true;
+}
 
-   char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+/**
+ * Close the driver
+ */
+bool mjpegcam_deinit()
+{
+    ESP_LOGI(TAG, "DEINIT");
 
-   esp_http_client_config_t config = {
-       .url = CONFIG_AD2_CAM1_URL,
-       .event_handler = _http_event_handler
-   };
-   
-   // Wait till the connected flag is set
-   app_wifi_wait_connected();
-   
-   esp_http_client_handle_t client = esp_http_client_init(&config);
-   esp_err_t err;
-   if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
-       ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
-       free(buffer);
-       vTaskDelete(NULL);      
-       return;
-   }
-   
-   ESP_LOGI(TAG, "mjpeg_client_task connected");
-   multipart_parser* parser = multipart_parser_init("--BoundaryString", &callbacks);
-  
-   int content_length =  esp_http_client_fetch_headers(client);
-   ESP_LOGI(TAG, "HTTP Stream reader Status = %d, content_length = %d cl = %d",
+    return true;
+}
+
+/**
+* Attempt to stay connected to a url
+* and capture the multipart mjpeg stream
+* converting each frame into a MEDIA FIFO
+* update to a pointer in the FT81X memory.
+*/
+static void mjpeg_client_task(void *p)
+{
+    ESP_LOGI(TAG, "mjpeg_client_task start");
+
+    // setup the multipart parser
+    multipart_parser_settings callbacks;
+    memset(&callbacks, 0, sizeof(multipart_parser_settings));
+
+    callbacks.on_header_field = read_header_name;
+    callbacks.on_header_value = read_header_value;
+    callbacks.on_part_data = read_part_data;
+    callbacks.on_part_data_end = read_part_data_end;
+
+    char *buffer = malloc(MAX_HTTP_RECV_BUFFER + 1);
+
+    esp_http_client_config_t config = {
+        .url = CONFIG_AD2_CAM1_URL,
+        .event_handler = _http_event_handler
+    };
+
+    // Wait till the connected flag is set
+    app_wifi_wait_connected();
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_err_t err;
+    if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        free(buffer);
+        vTaskDelete(NULL);      
+        return;
+    }
+
+    ESP_LOGI(TAG, "mjpeg_client_task connected");
+    multipart_parser* parser = multipart_parser_init("--BoundaryString", &callbacks);
+
+    int content_length =  esp_http_client_fetch_headers(client);
+    ESP_LOGI(TAG, "HTTP Stream reader Status = %d, content_length = %d cl = %d",
                    esp_http_client_get_status_code(client),
                    esp_http_client_get_content_length(client), content_length);
 
-   uint8_t done = 0;
-   do {
-     int read_len = esp_http_client_read(client, buffer, MAX_HTTP_RECV_BUFFER);
-     if (read_len <= 0) {
-       done = 1;
-       break;
-     }
-     // parse using multipart parser
-     multipart_parser_execute(parser, buffer, read_len);
-   } while(!done);
-   
-   esp_http_client_close(client);
-   esp_http_client_cleanup(client);
-   free(buffer);
+    uint8_t done = 0;
+    do {
+        int read_len = esp_http_client_read(client, buffer, MAX_HTTP_RECV_BUFFER);
+        if (read_len <= 0) {
+            done = 1;
+            break;
+        }
+        // parse using multipart parser
+        multipart_parser_execute(parser, buffer, read_len);
+    } while(!done);
 
-   // free the multipart parser
-   multipart_parser_free(parser);
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    free(buffer);
 
-   ESP_LOGI(TAG, "mjpeg_client_task done");
-   vTaskDelete(NULL);
-   return ;  
+    // free the multipart parser
+    multipart_parser_free(parser);
+
+    ESP_LOGI(TAG, "mjpeg_client_task done");
+    vTaskDelete(NULL);
+    return ;  
 }
 
 /**
@@ -309,11 +377,11 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
  */
 int read_header_name(multipart_parser* p, const char *at, size_t length)
 {
-#if 0
-   //ESP_LOGI(TAG, "HNAME: %.*s: ", length, at);
-   printf("HNAME: %.*s: ", length, at);
-#endif   
-   return 0;
+    #if 0
+    //ESP_LOGI(TAG, "HNAME: %.*s: ", length, at);
+    printf("HNAME: %.*s: ", length, at);
+    #endif   
+    return 0;
 }
 
 /**
@@ -322,11 +390,11 @@ int read_header_name(multipart_parser* p, const char *at, size_t length)
  */
 int read_header_value(multipart_parser* p, const char *at, size_t length)
 {
-#if 0
-   //ESP_LOGI(TAG, "HVAL: %.*s", length, at);
-   printf("HVAL: %.*s\n", length, at);
-#endif  
-   return 0;
+    #if 0
+    //ESP_LOGI(TAG, "HVAL: %.*s", length, at);
+    printf("HVAL: %.*s\n", length, at);
+    #endif  
+    return 0;
 }
 
 /**
@@ -335,67 +403,67 @@ int read_header_value(multipart_parser* p, const char *at, size_t length)
  */
 int read_part_data_end(multipart_parser* p) {
   
-     // take ownership of the VSPI bus
-     xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
+    // take ownership of the VSPI bus
+    xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
-     // We have loaded the entire image into MEDIA FIFO 
-     // but we must be sure our data is aligned to 32 bits.
-     // It is not clear if this is needed on MEDIA_FIFO but
-     // is needed when loading images via the command buffer.
-     int8_t align = 4 - (mjpeg_last_size & 0x3);
-     if (align & 0x3) {
-       uint8_t dummy[4] = {0x00, 0x00, 0x00, 0x00};
-       ft81x_cSPOOL_MF(dummy, align);       
-     }
+    // We have loaded the entire image into MEDIA FIFO 
+    // but we must be sure our data is aligned to 32 bits.
+    // It is not clear if this is needed on MEDIA_FIFO but
+    // is needed when loading images via the command buffer.
+    int8_t align = 4 - (mjpeg_last_size & 0x3);
+    if (align & 0x3) {
+        uint8_t dummy[4] = {0x00, 0x00, 0x00, 0x00};
+        ft81x_cSPOOL_MF(dummy, align);       
+    }
 
-     // Start streaming
-     ft81x_stream_start();
+    // Start streaming
+    ft81x_stream_start();
 
-     // USE MEDIA_FIFO
-     // Load the image at address 0 our streaming image address
-     ft81x_cmd_loadimage(0, OPT_RGB565 | OPT_NODL | OPT_MEDIAFIFO);
+    // USE MEDIA_FIFO
+    // Load the image at address 0 our streaming image address
+    ft81x_cmd_loadimage(0, OPT_RGB565 | OPT_NODL | OPT_MEDIAFIFO);
 
-     // Get the decompressed image properties
-     uint32_t imgptr, widthptr, heightptr;   
-     ft81x_cmd_getprops(&imgptr, &widthptr, &heightptr);
+    // Get the decompressed image properties
+    uint32_t imgptr, widthptr, heightptr;   
+    ft81x_cmd_getprops(&imgptr, &widthptr, &heightptr);
 
-     // Trigger FT81x to read the command buffer
-     ft81x_getfree(0);
+    // Trigger FT81x to read the command buffer
+    ft81x_getfree(0);
 
-     // Finish streaming to command buffer
-     ft81x_stream_stop();
+    // Finish streaming to command buffer
+    ft81x_stream_stop();
 
-     ft81x_wait_finish();
+    ft81x_wait_finish();
 
-     // FT81x seems to read in 32 bit chunks only so it will read past my write pointer.
-     mf_wp = ft81x_rd32(REG_MEDIAFIFO_READ);
+    // FT81x seems to read in 32 bit chunks only so it will read past my write pointer.
+    mf_wp = ft81x_rd32(REG_MEDIAFIFO_READ);
 
-#if 0
-     // SPI Debugging
-     gpio_set_level(GPIO_NUM_16, 1);
-     gpio_set_level(GPIO_NUM_16, 0);
-#endif
+    #if 0
+    // SPI Debugging
+    gpio_set_level(GPIO_NUM_16, 1);
+    gpio_set_level(GPIO_NUM_16, 0);
+    #endif
 
-     // Dump results
-     uint32_t img = ft81x_rd32(imgptr); // pointer to end of image and start of next free memory
-     uint32_t width = ft81x_rd32(widthptr);
-     uint32_t height = ft81x_rd32(heightptr);
-#if 1
-     ESP_LOGW(TAG, "loadimage wp:0x%08x ptr:0x%08x width: %d height: %d size: %d", mf_wp, img, width, height, mjpeg_last_size);
-#endif
+    // Dump results
+    uint32_t img = ft81x_rd32(imgptr); // pointer to end of image and start of next free memory
+    uint32_t width = ft81x_rd32(widthptr);
+    uint32_t height = ft81x_rd32(heightptr);
+    #if 1
+    ESP_LOGW(TAG, "loadimage wp:0x%08x ptr:0x%08x width: %d height: %d size: %d", mf_wp, img, width, height, mjpeg_last_size);
+    #endif
 
-     mjpeg_last_size = 0;
+    mjpeg_last_size = 0;
 
-     // release the VSPI bus
-     xSemaphoreGive(s_vspi_mutex);
+    // release the VSPI bus
+    xSemaphoreGive(s_vspi_mutex);
 
-#if 1 // RACE COND TEST
-     // Sleep
-     vTaskDelay(10 / portTICK_PERIOD_MS);
-#endif
+    #if 1 // RACE COND TEST
+    // Sleep
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    #endif
 
 
-  return 0;
+    return 0;
 }
 
 
@@ -410,34 +478,34 @@ int read_part_data_end(multipart_parser* p) {
 int read_part_data(multipart_parser* p, const char *at, size_t length)
 {
   
-  // just to be safe.
-  if(!length)
-     return 0;
+    // just to be safe.
+    if(!length)
+        return 0;
 
-  // The the FIFO stream is not being consumed we can block or crash the FT813
-  if (mjpeg_spool_ready) {
+    // The the FIFO stream is not being consumed we can block or crash the FT813
+    if (mjpeg_spool_ready) {
 
-    // Take owership of the VSPI bus to do a bulk write to MEDIA FIFO
-    xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
+        // Take owership of the VSPI bus to do a bulk write to MEDIA FIFO
+        xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
-    //// Send the image to the media fifo
-    ft81x_cSPOOL_MF((uint8_t *)at, length);    
+        //// Send the image to the media fifo
+        ft81x_cSPOOL_MF((uint8_t *)at, length);    
 
-    mjpeg_last_size+=length;
-    //ESP_LOGI(TAG, "httpread size: %d len: %d)",mjpeg_last_size, length);
+        mjpeg_last_size+=length;
+        //ESP_LOGI(TAG, "httpread size: %d len: %d)",mjpeg_last_size, length);
 
-    xSemaphoreGive(s_vspi_mutex);    
-  }
+        xSemaphoreGive(s_vspi_mutex);    
+    }
 
 
-#if 0
-   printf("VDATA %d: ", length);
-   for (int i = 0; i < length; i++)
-   {
-      printf("%02x", at[i]);
-   }
-   printf("\n");
-#endif
+    #if 0
+    printf("VDATA %d: ", length);
+    for (int i = 0; i < length; i++)
+    {
+       printf("%02x", at[i]);
+    }
+    printf("\n");
+    #endif
 
-   return 0;
+    return 0;
 }

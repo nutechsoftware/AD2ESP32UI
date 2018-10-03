@@ -78,9 +78,10 @@ extern uint8_t mjpeg_spool_ready;
  * Types
  */
  
-/*
+/**
  * Prototypes
- */ 
+ */
+  
 // Enable GPIO pin for bit bang debugging good for timing tests :c)
 bool enable_gpio_debug_pin();
 
@@ -91,9 +92,12 @@ void restart_esp32();
 void test_video();
 
 
-/*
+/***************************
+ * AD2ESP32UI FUNCTIONS
+ */
+
+/**
  * FreeRTOS main() entry point
- *
  */
 void app_main()
 {
@@ -148,245 +152,111 @@ void app_main()
     }
 #endif
 
-    // main app
+
+    // Init uSD card
+    mysdcard_init();
+
+    // Init MEMS microphone
+    pdmmic_init();
+    #if 1 // TEST PDMMIC
+    pdmmic_start(PDM_US_SAMPLE_RATE);
+    //vTaskDelay(4000 / portTICK_PERIOD_MS);
+    //pdmmic_stop();
+    #endif
+    
+    // Init WiFi hardware
+    mywifi_init();
+    
+    // Connect to WiFi
+    mywifi_start();
+
+    // main app screen
     test_video();
 
+    // disconnect from WiFi
+    mywifi_stop();
+    
+    // close uSD card
+    mysdcard_deinit();
+    
+    // close MEMS microphone
+    pdmmic_deinit();
+        
+    // close WiFi
+    mywifi_deinit();
+    
     // All done
     restart_esp32();
 }
 
-/*
+/**
  * Restart ESP32 chip
  */
-void restart_esp32() {
-  for (int i = 4; i >= 0; i--) {
-      printf("Restarting in %d seconds...\n", i);
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-  printf("Restarting now.\n");
-  fflush(stdout);
-  esp_restart();
+void restart_esp32() 
+{
+    for (int i = 4; i >= 0; i--) {
+        printf("Restarting in %d seconds...\n", i);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    printf("Restarting now.\n");
+    fflush(stdout);
+    esp_restart();
 }
 
 
-/* 
+/**
  * Enable an output pin for bit banging debug data
  */
-bool enable_gpio_debug_pin() {
-  esp_err_t ret;
-  gpio_config_t io_conf = {
-  .intr_type = GPIO_PIN_INTR_DISABLE,    
-  .mode = GPIO_MODE_OUTPUT,
-  .pin_bit_mask = 1LL << GPIO_NUM_16,
-  };
+bool enable_gpio_debug_pin() 
+{
+    esp_err_t ret;
+    gpio_config_t io_conf = {
+    .intr_type = GPIO_PIN_INTR_DISABLE,    
+    .mode = GPIO_MODE_OUTPUT,
+    .pin_bit_mask = 1LL << GPIO_NUM_16,
+    };
 
-  ret = gpio_config(&io_conf);
-  if(ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to add DEBUG pin");
-    return false;
-  }
-  return true;
+    ret = gpio_config(&io_conf);
+    if(ret != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to add DEBUG pin");
+      return false;
+    }
+    return true;
 }
 
-void test_video() {
+void test_video() 
+{
 
 #if 0 // LOAD VIDEO FROM uSD TEST  
-  // Start our SD Card
-  sdmmc_card_t card;  
-  start_sdcard(&card);
-  
-  ESP_LOGI(TAG, "Opening Video File");
-  //FILE* fin = fopen("/sdcard/cbw3a.avi", "r");
-  //FILE* fin = fopen("/sdcard/70s_tv09.avi", "r");
-  FILE* fin = fopen("/sdcard/Sam720N.avi", "r");  
-  if (fin == NULL) {
-     ESP_LOGE(TAG, "Failed to open file for reading");
-     return;
-  }
-  
-  // Display brightness
-  ft81x_wr(REG_PWM_DUTY, 42);
-
-  // Set volume to MAX
-  ft81x_wr(REG_VOL_SOUND,0x00);
-  ft81x_wr(REG_VOL_PB,0xff);
-  
-  // Turn on the audio amp connected to GPIO3
-  ft81x_wr16(REG_GPIOX_DIR, ft81x_rd16(REG_GPIOX_DIR) | (0x1 << 3));
-  ft81x_wr16(REG_GPIOX, ft81x_rd16(REG_GPIOX) | (0x1 << 3));
-
-  //// Start streaming
-  ft81x_stream_start();
-
-  //// Configure media fifo
-  ft81x_cmd_mediafifo(0x100000UL-0x40000UL, 0x40000UL);
-
-  //// Trigger FT81x to read the command buffer
-  ft81x_getfree(0);
-
-  //// Finish streaming to command buffer
-  ft81x_stream_stop();
-
-  //// stop media fifo
-  ft81x_wr32(REG_MEDIAFIFO_WRITE, 0);
-        
-  //// Start streaming
-  ft81x_stream_start();
-
-  // Define the bitmap we want to draw
-  //ft81x_cmd_dlstart();  // Set REG_CMD_DL when done
-  //ft81x_cmd_swap();     // Set AUTO swap at end of display list
-  ft81x_clear_color_rgb32(0x505050);  
-  ft81x_clear();
-  ft81x_color_rgb32(0xff0000);
-  ft81x_bgcolor_rgb32(0xff0000);
-  ft81x_fgcolor_rgb32(0x0000ff);
-
-  //// Play the clip
-  ft81x_cmd_playvideo(OPT_MEDIAFIFO | OPT_NOTEAR | OPT_SOUND);
-
-  // Draw some text and a number display value of dial
-  ft81x_cmd_text(740, 300, 30, OPT_CENTERY, "Hello World");
-
-  //// Trigger FT81x to read the command buffer
-  ft81x_getfree(0);
-
-  //// Finish streaming to command buffer
-  ft81x_stream_stop();
-
-  //// Wait till the GPU is finished
-  // This screen will not finish as it wants to consume fifo data
-  // For now to avoid blocking in this tests we will not wait.
-  // We could thread the fifo spooling and block here till the screen ends
-  // say a button is pushed on the display.
-  // ft81x_wait_finish();
-
-  size_t size = 0;
-  uint8_t buffer[32*32]; // chunk size ESP32 max is 32 bytes with no DMA
-
-  do {
-    //// Read our block from the disk
-    size = fread(buffer, 1, sizeof(buffer), fin);
-
-    if (size <= 0) break;
-
-    //// Send the image to the media fifo  
-    ft81x_cSPOOL_MF(buffer, size);
-
-  } while(size);
-  
-  // Sleep
-  vTaskDelay(100 / portTICK_PERIOD_MS);
-
-  fclose(fin);
-  stop_sdcard();
-#endif
-
-#if 1 // Live WEBCAM interface demo
-
-#if 0
-  // start the microphone listening thread
-  pdmmic_init();
-  pdmmic_start();
-#endif
-
-  // initialize vspi access mutex for shared access to the FT81X
-  s_vspi_mutex = xSemaphoreCreateMutex();
-
-  // Start uSD card  
-  mysdcard_init();
-  
-  // Start the WIFI client
-  mywifi_init();
-  
-  // Start mjpeg stream for CAM1
-  mjpegcam_init();
-  
-  // Set display brightness
-  ft81x_wr(REG_PWM_DUTY, 22);
-
-  //// Start streaming
-  ft81x_stream_start();
-
-  //// Configure media fifo
-  ft81x_cmd_mediafifo(0x100000UL-0x40000UL, 0x40000UL);
-
-  //// Trigger FT81x to read the command buffer
-  ft81x_getfree(0);
-
-  //// Finish streaming to command buffer
-  ft81x_stream_stop();
-
-  //// stop media fifo
-  ft81x_wr32(REG_MEDIAFIFO_WRITE, 0);
-
-  do {
-    xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
-
-    //// let everyone know we are ready for media fifo spooling to start
-    mjpeg_spool_ready = 1;
+    // Start our SD Card
+    sdmmc_card_t card;  
+    start_sdcard(&card);
     
-    // download the display touch memory into ft81x_touch
-    // Start streaming
-    ft81x_get_touch_inputs();
-    
-    ft81x_stream_start();
-
-    // Define the bitmap we want to draw
-    ft81x_cmd_dlstart();  // Set REG_CMD_DL when done
-    ft81x_cmd_swap();     // Set AUTO swap at end of display list    
-    ft81x_clear_color_rgb32(0xfdfdfd);
-    ft81x_clear();
-    ft81x_color_rgb32(0x0f0f0f);
-    ft81x_bgcolor_rgb32(0x000000);
-    ft81x_fgcolor_rgb32(0x0000ff);
-
-    // Draw some text
-    ft81x_cmd_text(650, 25, 30, OPT_CENTERY, "CAMERAS");
-    ft81x_cmd_text(660, 473, 21, OPT_CENTERY, "AlarmDecoder.com");
-
-    // Draw a button
-    //// Turn on tagging
-    ft81x_tag_mask(1);
-
-    ft81x_tag(3); // tag the button #3
-    ft81x_cmd_track(650, 50, 140, 50, 3); // track touches to the tag
-    ft81x_cmd_button(650, 50, 140, 50, 31, 0, "CAM1");
-
-    ft81x_tag(4); // tag the button #3
-    ft81x_cmd_track(650, 110, 140, 50, 3); // track touches to the tag
-    ft81x_cmd_button(650, 110, 140, 50, 31, 0, "CAM2");
-
-    ft81x_tag(5); // tag the button #3
-    ft81x_cmd_track(650, 170, 140, 50, 3); // track touches to the tag
-    ft81x_cmd_button(650, 170, 140, 50, 31, 0, "CAM3");
-
-    // Draw the image
-    uint16_t pw = 640, ph = 480, st = pw * 2;
-    ft81x_bitmap_source(0);
-    ft81x_bitmap_layout(RGB565, st & 0x3ff, ph & 0x1ff);
-    ft81x_bitmap_layout_h(st >> 10, ph >> 9);
-        
-    ft81x_bitmap_size(NEAREST, BORDER, BORDER, pw & 0x1ff, ph & 0x1ff);
-    ft81x_bitmap_size_h(pw >> 9, ph >> 9);
-    ft81x_color_rgb32(0xffffff);
-    ft81x_begin(BITMAPS);
-    ft81x_vertex2ii(0, 0, 0, 0);
-
-    // Draw ON/OFF based upon touch
-    if (ft81x_ctouch.tag0) {
-      ft81x_color_rgb32(0xff0000);
-      ft81x_bgcolor_rgb32(0xff0000);
-      if(ft81x_ctouch.tag0 == 3)
-        ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM1");
-      if(ft81x_ctouch.tag0 == 4)
-        ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM2");
-      if(ft81x_ctouch.tag0 == 5)
-        ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM3");
+    ESP_LOGI(TAG, "Opening Video File");
+    //FILE* fin = fopen("/sdcard/cbw3a.avi", "r");
+    //FILE* fin = fopen("/sdcard/70s_tv09.avi", "r");
+    FILE* fin = fopen("/sdcard/Sam720N.avi", "r");  
+    if (fin == NULL) {
+       ESP_LOGE(TAG, "Failed to open file for reading");
+       return;
     }
     
+    // Display brightness
+    ft81x_wr(REG_PWM_DUTY, 42);
 
-    ft81x_display();
+    // Set volume to MAX
+    ft81x_wr(REG_VOL_SOUND,0x00);
+    ft81x_wr(REG_VOL_PB,0xff);
+    
+    // Turn on the audio amp connected to GPIO3
+    ft81x_wr16(REG_GPIOX_DIR, ft81x_rd16(REG_GPIOX_DIR) | (0x1 << 3));
+    ft81x_wr16(REG_GPIOX, ft81x_rd16(REG_GPIOX) | (0x1 << 3));
+
+    //// Start streaming
+    ft81x_stream_start();
+
+    //// Configure media fifo
+    ft81x_cmd_mediafifo(0x100000UL-0x40000UL, 0x40000UL);
 
     //// Trigger FT81x to read the command buffer
     ft81x_getfree(0);
@@ -394,18 +264,180 @@ void test_video() {
     //// Finish streaming to command buffer
     ft81x_stream_stop();
 
-    ft81x_wait_finish();
+    //// stop media fifo
+    ft81x_wr32(REG_MEDIAFIFO_WRITE, 0);
+          
+    //// Start streaming
+    ft81x_stream_start();
 
-    xSemaphoreGive(s_vspi_mutex);
+    // Define the bitmap we want to draw
+    //ft81x_cmd_dlstart();  // Set REG_CMD_DL when done
+    //ft81x_cmd_swap();     // Set AUTO swap at end of display list
+    ft81x_clear_color_rgb32(0x505050);  
+    ft81x_clear();
+    ft81x_color_rgb32(0xff0000);
+    ft81x_bgcolor_rgb32(0xff0000);
+    ft81x_fgcolor_rgb32(0x0000ff);
 
-#if 0 // RACE COND TEST 
-    // Sleep
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-#endif
+    //// Play the clip
+    ft81x_cmd_playvideo(OPT_MEDIAFIFO | OPT_NOTEAR | OPT_SOUND);
+
+    // Draw some text and a number display value of dial
+    ft81x_cmd_text(740, 300, 30, OPT_CENTERY, "Hello World");
+
+    //// Trigger FT81x to read the command buffer
+    ft81x_getfree(0);
+
+    //// Finish streaming to command buffer
+    ft81x_stream_stop();
+
+    //// Wait till the GPU is finished
+    // This screen will not finish as it wants to consume fifo data
+    // For now to avoid blocking in this tests we will not wait.
+    // We could thread the fifo spooling and block here till the screen ends
+    // say a button is pushed on the display.
+    // ft81x_wait_finish();
+
+    size_t size = 0;
+    uint8_t buffer[32*32]; // chunk size ESP32 max is 32 bytes with no DMA
+
+    do {
+      //// Read our block from the disk
+      size = fread(buffer, 1, sizeof(buffer), fin);
+
+      if (size <= 0) break;
+
+      //// Send the image to the media fifo  
+      ft81x_cSPOOL_MF(buffer, size);
+
+    } while(size);
     
-  } while(1);
+    // Sleep
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+
+    fclose(fin);
+    stop_sdcard();
 #endif
 
-  // stop uSD card
-  mysdcard_uninit();
+#if 1 // Live WEBCAM interface demo
+
+    // initialize vspi access mutex for shared access to the FT81X
+    s_vspi_mutex = xSemaphoreCreateMutex();
+
+   
+    // Start mjpeg stream for CAM1
+    mjpegcam_init();
+    mjpegcam_start();
+    
+    // Set display brightness
+    ft81x_wr(REG_PWM_DUTY, 22);
+
+    //// Start streaming
+    ft81x_stream_start();
+
+    //// Configure media fifo
+    ft81x_cmd_mediafifo(0x100000UL-0x40000UL, 0x40000UL);
+
+    //// Trigger FT81x to read the command buffer
+    ft81x_getfree(0);
+
+    //// Finish streaming to command buffer
+    ft81x_stream_stop();
+
+    //// stop media fifo
+    ft81x_wr32(REG_MEDIAFIFO_WRITE, 0);
+
+    do {
+      xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
+
+      //// let everyone know we are ready for media fifo spooling to start
+      mjpeg_spool_ready = 1;
+      
+      // download the display touch memory into ft81x_touch
+      // Start streaming
+      ft81x_get_touch_inputs();
+      
+      ft81x_stream_start();
+
+      // Define the bitmap we want to draw
+      ft81x_cmd_dlstart();  // Set REG_CMD_DL when done
+      ft81x_cmd_swap();     // Set AUTO swap at end of display list
+      ft81x_clear_color_rgb32(0xfdfdfd);
+      ft81x_clear();
+      ft81x_color_rgb32(0x0f0f0f);
+      ft81x_bgcolor_rgb32(0x000000);
+      ft81x_fgcolor_rgb32(0x0000ff);
+
+      // Draw some text
+      ft81x_cmd_text(650, 25, 30, OPT_CENTERY, "CAMERAS");
+      ft81x_cmd_text(660, 473, 21, OPT_CENTERY, "AlarmDecoder.com");
+
+      // Draw a button
+      //// Turn on tagging
+      ft81x_tag_mask(1);
+
+      ft81x_tag(3); // tag the button #3
+      ft81x_cmd_track(650, 50, 140, 50, 3); // track touches to the tag
+      ft81x_cmd_button(650, 50, 140, 50, 31, 0, "CAM1");
+
+      ft81x_tag(4); // tag the button #3
+      ft81x_cmd_track(650, 110, 140, 50, 3); // track touches to the tag
+      ft81x_cmd_button(650, 110, 140, 50, 31, 0, "CAM2");
+
+      ft81x_tag(5); // tag the button #3
+      ft81x_cmd_track(650, 170, 140, 50, 3); // track touches to the tag
+      ft81x_cmd_button(650, 170, 140, 50, 31, 0, "CAM3");
+
+      // Draw the image
+      uint16_t pw = 640, ph = 480, st = pw * 2;
+      ft81x_bitmap_source(0);
+      ft81x_bitmap_layout(RGB565, st & 0x3ff, ph & 0x1ff);
+      ft81x_bitmap_layout_h(st >> 10, ph >> 9);
+          
+      ft81x_bitmap_size(NEAREST, BORDER, BORDER, pw & 0x1ff, ph & 0x1ff);
+      ft81x_bitmap_size_h(pw >> 9, ph >> 9);
+      ft81x_color_rgb32(0xffffff);
+      ft81x_begin(BITMAPS);
+      ft81x_vertex2ii(0, 0, 0, 0);
+
+      // Draw ON/OFF based upon touch
+      if (ft81x_ctouch.tag0) {
+        ft81x_color_rgb32(0xff0000);
+        ft81x_bgcolor_rgb32(0xff0000);
+        if(ft81x_ctouch.tag0 == 3)
+          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM1");
+        if(ft81x_ctouch.tag0 == 4)
+          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM2");
+        if(ft81x_ctouch.tag0 == 5)
+          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM3");
+          break;
+      }
+      
+
+      ft81x_display();
+
+      //// Trigger FT81x to read the command buffer
+      ft81x_getfree(0);
+
+      //// Finish streaming to command buffer
+      ft81x_stream_stop();
+
+      ft81x_wait_finish();
+
+      xSemaphoreGive(s_vspi_mutex);
+
+  #if 0 // RACE COND TEST 
+      // Sleep
+      vTaskDelay(200 / portTICK_PERIOD_MS);
+  #endif
+      
+    } while(1);
+  #endif
+
+    // stop the stream
+    mjpegcam_stop();
+
+    // stop the cam stream thread
+    mjpegcam_deinit();
+
 }

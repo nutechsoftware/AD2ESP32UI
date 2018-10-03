@@ -25,7 +25,7 @@
 #ifndef _MYSDCARD_H_
 #define _MYSDCARD_H_
 
-/*
+/**
  * Defines
  */
 
@@ -35,15 +35,21 @@
 #define SPISD_PIN_NUM_CLK   CONFIG_SPISD_PIN_NUM_CLK   // GPIO_NUM_14 // PURPLE CLK
 #define SPISD_PIN_NUM_CS    CONFIG_SPISD_PIN_NUM_CS    // GPIO_NUM_15 // WHITE   D3 | CS
 
-/*
- * Prototypes
+/**
+ * Public Prototypes
  */
 
-// start sdcard / vfat driver
+// init sdcard / vfat driver hardware
 bool mysdcard_init();
 
-// stop free sdcard driver resources
-void mysdcard_uninit();
+// start the sdcard driver
+bool mysdcard_start();
+
+// stop the sdcard driver
+bool mysdcard_stop();
+
+// stop and free sdcard driver resources
+bool mysdcard_deinit();
 
 
 #endif
