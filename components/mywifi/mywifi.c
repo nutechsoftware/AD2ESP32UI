@@ -227,9 +227,9 @@ bool mjpegcam_start()
 
     ret = xTaskCreate(mjpeg_client_task,
                       MJPEG_CLIENT_TASK_NAME,
-                      MJPEG_CLIENT_TASK_NAME_STACK,
+                      MJPEG_CLIENT_TASK_STACK,
                       NULL,
-                      8,
+                      MJPEG_CLIENT_TASK_PRIORITY,
                       &mjpeg_client_handle);
 
     if (ret != pdPASS)  {

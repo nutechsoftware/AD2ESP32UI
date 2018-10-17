@@ -37,28 +37,20 @@
 
 // General settings/utils
 
-// How many PDM bytes to sample per PCM output sample
-#define WINDOW_SIZE 16
-
-// i2c driver settings 
-#define BITS_PS 16
-#define I2S_NUM 0
-#define BUF_COUNT 4
-#define BUF_LENGTH 250
-
 // Default i2c sample rate
-#define PDM_LP_SAMPLE_RATE  8000   // 507.9kHz LOW POWER 270uA
-#define PDM_SP_SAMPLE_RATE 24000   // 1.524MHz STANDARD 700uA
-#define PDM_US_SAMPLE_RATE 48000   // 3.2MHz ULTRASONIC 1000uA
+#define PDMMIC_LP_SAMPLE_RATE  8000   // 516.1kHz LOW POWER 270uA
+#define PDMMIC_MP_SAMPLE_RATE 11000   // 711.1kHz LOW POWER 270uA
+#define PDMMIC_SP_SAMPLE_RATE 22050   // 1.455MHz STANDARD 700uA
+#define PDMMIC_HD_SAMPLE_RATE 44100   // 2.667MHz HIGH DEFINITION 1000uA
 
 // Wiring
 #define PDMMIC_CLK_PIN   CONFIG_PDMMIC_CLK_PIN   //_GPIO_NUM_26
 #define PDMMIC_DATA_PIN  CONFIG_PDMMIC_DATA_PIN  //_GPIO_NUM_35
 
-// RTOS task
-#define PDMMIC_CLIENT_TASK_NAME        "pdmmic_client_task"
-#define PDMMIC_CLIENT_TASK_NAME_STACK  5120
-
+// RTOS PDM consumer task
+#define PDMMIC_CLIENT_TASK_NAME       "pdmmic_client_task"
+#define PDMMIC_CLIENT_TASK_STACK      5120
+#define PDMMIC_CLIENT_PRIORITY        7
 
 /**
  * Public Prototypes

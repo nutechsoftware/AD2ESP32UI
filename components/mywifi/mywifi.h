@@ -38,7 +38,8 @@
 
 /* WEBCAM MJPEG collector task */
 #define MJPEG_CLIENT_TASK_NAME        "mjpeg_client_task"
-#define MJPEG_CLIENT_TASK_NAME_STACK  10240
+#define MJPEG_CLIENT_TASK_STACK       10240
+#define MJPEG_CLIENT_TASK_PRIORITY    8
 
 
 /**
