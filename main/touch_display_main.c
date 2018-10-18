@@ -158,10 +158,14 @@ void app_main()
 
     // Init MEMS microphone
     pdmmic_init();
-    #if 1 // TEST PDMMIC
-    pdmmic_start(PDM_US_SAMPLE_RATE);
-    //vTaskDelay(4000 / portTICK_PERIOD_MS);
-    //pdmmic_stop();
+
+    #if 0 // TEST PDMMIC
+    mysdcard_start();
+    ft81x_wr(REG_PWM_DUTY, 0); /* RF Noise testing. Turn off PWM */
+    pdmmic_start(PDMMIC_SP_SAMPLE_RATE);
+    //vTaskDelay(24000 / portTICK_PERIOD_MS);
+    pdmmic_stop();
+    mysdcard_stop();
     #endif
     
     // Init WiFi hardware
@@ -426,10 +430,8 @@ void test_video()
 
       xSemaphoreGive(s_vspi_mutex);
 
-  #if 0 // RACE COND TEST 
-      // Sleep
-      vTaskDelay(200 / portTICK_PERIOD_MS);
-  #endif
+      // Sleep 25fps is fast enough.
+      vTaskDelay(40 / portTICK_PERIOD_MS);
       
     } while(1);
   #endif
