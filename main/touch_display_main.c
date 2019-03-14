@@ -51,6 +51,7 @@
 #include <pdmmic.h>
 #include <mysdcard.h>
 #include <mywifi.h>
+#include <myi2csensors.h>
 
 /*
  * Defines
@@ -131,6 +132,13 @@ void app_main()
       ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // Init the i2c sensor bus
+    myi2csensors_init();
+    #if 0 // TEST MYI2CSENSORS
+    myi2csensors_start(50000);
+    //myi2csensors_stop();
+    #endif
     
     // Initialize the SPI driver on ESP32 VSPI pins for the FT81X
     res = ft81x_initSPI();
@@ -160,14 +168,14 @@ void app_main()
     pdmmic_init();
 
     #if 0 // TEST PDMMIC
-    mysdcard_start();
-    ft81x_wr(REG_PWM_DUTY, 0); /* RF Noise testing. Turn off PWM */
-    pdmmic_start(PDMMIC_SP_SAMPLE_RATE);
-    //vTaskDelay(24000 / portTICK_PERIOD_MS);
-    pdmmic_stop();
-    mysdcard_stop();
+      mysdcard_start();
+      // ft81x_wr(REG_PWM_DUTY, 0); /* RF Noise testing. Turn off PWM */
+      pdmmic_start(PDMMIC_SP_SAMPLE_RATE);
+      vTaskDelay(24000 / portTICK_PERIOD_MS);
+      pdmmic_stop();
+      mysdcard_stop();
     #endif
-    
+
     // Init WiFi hardware
     mywifi_init();
     
@@ -179,6 +187,9 @@ void app_main()
 
     // disconnect from WiFi
     mywifi_stop();
+
+    // close i2c sensors bus
+    myi2csensors_deinit();
     
     // close uSD card
     mysdcard_deinit();
@@ -333,8 +344,8 @@ void test_video()
     mjpegcam_init();
     mjpegcam_start();
     
-    // Set display brightness
-    ft81x_wr(REG_PWM_DUTY, 22);
+    // wakeup the display and set brightness
+    ft81x_wake(22);
 
     //// Start streaming
     ft81x_stream_start();

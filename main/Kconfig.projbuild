@@ -60,4 +60,17 @@ menu "AlarmDecoderUI Configuration"
         GPIO Pin connected to PDM output pin of the MEMS device.          
   endmenu
 
+  menu "i2c sensor bus config"
+    config MYI2CSENSORS_CLK_PIN
+        int "I2C CLOCK PIN"
+        default 2
+        help
+        GPIO Pin connected to clock input pin of the I2C sensor bus.
+
+    config MYI2CSENSORS_DATA_PIN
+        int "I2C DATA PIN"
+        default 4
+        help
+        GPIO Pin connected to DATA pin of the I2C bus.
+  endmenu
 endmenu

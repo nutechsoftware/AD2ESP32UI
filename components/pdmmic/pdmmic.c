@@ -48,7 +48,7 @@
  */ 
 //#define PDMMIC_WRITE_TEST_FILE 1
 
-// i2c driver settings for MEMS PDM signal
+// i2s driver settings for MEMS PDM signal
 #define BITS_PS 16
 #define I2S_NUM 0
 #define BUF_COUNT 32

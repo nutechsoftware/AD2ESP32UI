@@ -37,7 +37,7 @@
 
 // General settings/utils
 
-// Default i2c sample rate
+// Default i2s sample rate
 #define PDMMIC_LP_SAMPLE_RATE  8000   // 516.1kHz LOW POWER 270uA
 #define PDMMIC_MP_SAMPLE_RATE 11000   // 711.1kHz LOW POWER 270uA
 #define PDMMIC_SP_SAMPLE_RATE 22050   // 1.455MHz STANDARD 700uA
@@ -56,7 +56,7 @@
  * Public Prototypes
  */
 
-// Initialize the ESP32 i2c device driver and connect them to the pins for the MEMS device
+// Initialize the ESP32 i2s device driver and connect them to the pins for the MEMS device
 bool pdmmic_init();
 
 // Start processing PDM data

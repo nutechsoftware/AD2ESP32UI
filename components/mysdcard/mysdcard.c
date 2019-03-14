@@ -85,6 +85,10 @@ bool mysdcard_start()
   slot_config.gpio_mosi = SPISD_PIN_NUM_MOSI;
   slot_config.gpio_sck  = SPISD_PIN_NUM_CLK;
   slot_config.gpio_cs   = SPISD_PIN_NUM_CS;
+  slot_config.gpio_cd   = SPISD_PIN_NUM_CD;
+
+  // Enable power if configured to card reader.
+  mysdcard_setpower(1);
   
   // Options for mounting the filesystem.
   // If format_if_mount_failed is set to true, SD card will be partitioned and
@@ -138,5 +142,32 @@ bool mysdcard_deinit()
 {    
     ESP_LOGI(TAG, "DEINIT");
    
+    return true;
+}
+
+/**
+ * Turn power on/off if pin for power is configured.
+ */
+bool mysdcard_setpower(uint8_t powerstate)
+{
+    // If we have no pin for power return true
+    if(!SPISD_PIN_NUM_EN) return true;
+
+    esp_err_t ret;
+    gpio_config_t io_conf = {
+      .intr_type = GPIO_PIN_INTR_DISABLE,
+      .mode = GPIO_MODE_OUTPUT,
+      .pin_bit_mask = 1LL << SPISD_PIN_NUM_EN,
+    };
+
+    ret = gpio_config(&io_conf);
+    if(ret != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to add SD card power enable pin");
+      return false;
+    }
+
+    // Set power ON(1)/OFF(0)
+    gpio_set_level(SPISD_PIN_NUM_EN, powerstate);
+
     return true;
 }
