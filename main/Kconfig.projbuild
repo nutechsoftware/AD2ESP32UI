@@ -41,11 +41,23 @@ menu "AlarmDecoderUI Configuration"
 
     config SPISD_PIN_NUM_CS
         int "CS PIN"
-        default 15 
+        default 15
         help
         GPIO Pin connected to the CS pin
+
+    config SPISD_PIN_NUM_CD
+        int "CD PIN"
+        default 39
+        help
+        GPIO Pin connected to the Card Detect pin
+
+    config SPISD_PIN_NUM_EN
+        int "EN PIN"
+        default 27
+        help
+        GPIO Pin connected to the power control for the uSD card
   endmenu
-          
+
   menu "MEMS microphone config"
     config PDMMIC_CLK_PIN
         int "PDM CLOCK PIN"

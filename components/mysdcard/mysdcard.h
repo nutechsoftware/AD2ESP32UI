@@ -53,5 +53,7 @@ bool mysdcard_stop();
 // stop and free sdcard driver resources
 bool mysdcard_deinit();
 
+// set the power state to the uSD card
+bool mysdcard_setpower(uint8_t powerstate);
 
 #endif

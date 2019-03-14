@@ -300,6 +300,7 @@ static void mjpeg_client_task(void *p)
     if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
         free(buffer);
+        mjpeg_client_handle = NULL; //not synced with mjpegcam_stop()
         vTaskDelete(NULL);      
         return;
     }
@@ -331,8 +332,8 @@ static void mjpeg_client_task(void *p)
     multipart_parser_free(parser);
 
     ESP_LOGI(TAG, "mjpeg_client_task done");
+    mjpeg_client_handle = NULL; //not synced with mjpegcam_stop()
     vTaskDelete(NULL);
-    return ;  
 }
 
 /**

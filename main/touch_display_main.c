@@ -67,8 +67,8 @@ static const char* TAG = "AD2ESP32UI";
 SemaphoreHandle_t s_vspi_mutex;
 
 // FT81x state vars
-extern struct ft81x_ctouch_t ft81x_ctouch;
-extern struct ft81x_touch_t ft81x_touch;
+extern struct ft81x_touch_input_t ft81x_touch_input[];
+extern struct ft81x_touch_tracker_t ft81x_touch_tracker[];
 extern uint32_t mf_wp;
 
 // CAM stream state
@@ -362,13 +362,19 @@ void test_video()
     //// stop media fifo
     ft81x_wr32(REG_MEDIAFIFO_WRITE, 0);
 
+    ft81x_multi_touch_enable(true);
+
+    printf("ctouch mode: 0x%04x multi-touch: %s\n", ft81x_touch_mode(), ft81x_multi_touch_enabled() ? "true" : "false");
+
+    bool wasActivePoint[FT81X_TOUCH_POINTS] = {false};
+
     do {
       xSemaphoreTake(s_vspi_mutex, portMAX_DELAY);
 
       //// let everyone know we are ready for media fifo spooling to start
       mjpeg_spool_ready = 1;
       
-      // download the display touch memory into ft81x_touch
+      // download the display touch memory into ft81x_touch_tracker
       // Start streaming
       ft81x_get_touch_inputs();
       
@@ -388,20 +394,22 @@ void test_video()
       ft81x_cmd_text(660, 473, 21, OPT_CENTERY, "AlarmDecoder.com");
 
       // Draw a button
-      //// Turn on tagging
-      ft81x_tag_mask(1);
+
+      ft81x_tag_mask(1); //// Turn on tagging
 
       ft81x_tag(3); // tag the button #3
-      ft81x_cmd_track(650, 50, 140, 50, 3); // track touches to the tag
-      ft81x_cmd_button(650, 50, 140, 50, 31, 0, "CAM1");
+      //ft81x_cmd_track(650, 50, 140, 50, 3); // track touches to the tag
+      ft81x_cmd_button(650, 50, 140, 50, 31, 0, "CAM3");
 
-      ft81x_tag(4); // tag the button #3
-      ft81x_cmd_track(650, 110, 140, 50, 3); // track touches to the tag
-      ft81x_cmd_button(650, 110, 140, 50, 31, 0, "CAM2");
+      ft81x_tag(4); // tag the button #4
+      //ft81x_cmd_track(650, 110, 140, 50, 4); // track touches to the tag
+      ft81x_cmd_button(650, 110, 140, 50, 31, 0, "CAM4");
 
-      ft81x_tag(5); // tag the button #3
-      ft81x_cmd_track(650, 170, 140, 50, 3); // track touches to the tag
-      ft81x_cmd_button(650, 170, 140, 50, 31, 0, "CAM3");
+      ft81x_tag(5); // tag the button #5
+      ft81x_cmd_track(650, 170, 140, 50, 5); // track touches to the tag
+      ft81x_cmd_button(650, 170, 140, 50, 31, 0, "CAM5");
+
+      ft81x_tag_mask(0);
 
       // Draw the image
       uint16_t pw = 640, ph = 480, st = pw * 2;
@@ -415,19 +423,32 @@ void test_video()
       ft81x_begin(BITMAPS);
       ft81x_vertex2ii(0, 0, 0, 0);
 
-      // Draw ON/OFF based upon touch
-      if (ft81x_ctouch.tag0) {
-        ft81x_color_rgb32(0xff0000);
-        ft81x_bgcolor_rgb32(0xff0000);
-        if(ft81x_ctouch.tag0 == 3)
-          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM1");
-        if(ft81x_ctouch.tag0 == 4)
-          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM2");
-        if(ft81x_ctouch.tag0 == 5)
-          ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM3");
-          break;
+      for (int i = 0; i < FT81X_TOUCH_POINTS; i++) {
+          if (ft81x_touch_tracker[i].tag) {
+              wasActivePoint[i] = true;
+              printf("tag[%u] tracker [tag=%u value=%d] input [tag=%u, displayXY=%d,%d tagXY=%d,%d]\n",
+                i, ft81x_touch_tracker[i].tag, ft81x_touch_tracker[i].value,
+                ft81x_touch_input[i].tag, ft81x_touch_input[i].display_x, ft81x_touch_input[i].display_y, ft81x_touch_input[i].tag_x, ft81x_touch_input[i].tag_y);
+          } else if (wasActivePoint[i]) {
+              wasActivePoint[i] = false;
+              printf("tag[%u] input [displayXY=%d,%d tagXY=%d,%d]\n",
+                i, ft81x_touch_input[i].display_x, ft81x_touch_input[i].display_y, ft81x_touch_input[i].tag_x, ft81x_touch_input[i].tag_y);
+          }
       }
-      
+     // Draw ON/OFF based upon touch
+     // Not really the way to do this...
+     if (ft81x_touch_input[0].tag) {
+         ft81x_color_rgb32(0xff0000);
+         ft81x_bgcolor_rgb32(0xff0000);
+         if(ft81x_touch_input[0].tag == 3)
+           ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM3");
+         if(ft81x_touch_input[0].tag == 4)
+           ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM4");
+         if(ft81x_touch_input[0].tag == 5) {
+           ft81x_cmd_text(280, 210, 31, OPT_CENTERY, "CAM5");
+           // break;
+         }
+      }
 
       ft81x_display();
 
