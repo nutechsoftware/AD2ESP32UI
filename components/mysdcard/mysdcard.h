@@ -24,6 +24,9 @@
 
 #ifndef _MYSDCARD_H_
 #define _MYSDCARD_H_
+#include "freertos/task.h"
+#include "driver/sdmmc_host.h"
+#include "driver/sdspi_host.h"
 
 /**
  * Defines

@@ -141,7 +141,7 @@ void app_main()
     #endif
     
     // Initialize the SPI driver on ESP32 VSPI pins for the FT81X
-    res = ft81x_initSPI();
+    res = ft81x_init_spi();
     if (!res) {
       printf("ESP32 SPI init failed\n");
       restart_esp32();
@@ -151,7 +151,7 @@ void app_main()
 
 #if 1 // Disable GPU for testing
     // Initialize the FT81X GPU
-    res = ft81x_initGPU();
+    res = ft81x_init_gpu();
     if (!res) {
       printf("FT81X init failed\n");
       restart_esp32();
@@ -245,20 +245,20 @@ void test_video()
 #if 0 // LOAD VIDEO FROM uSD TEST  
     // Start our SD Card
     sdmmc_card_t card;  
-    start_sdcard(&card);
+    mysdcard_start(&card);
     
     ESP_LOGI(TAG, "Opening Video File");
-    //FILE* fin = fopen("/sdcard/cbw3a.avi", "r");
+    FILE* fin = fopen("/sdcard/cbw3a.avi", "r");
     //FILE* fin = fopen("/sdcard/70s_tv09.avi", "r");
-    FILE* fin = fopen("/sdcard/Sam720N.avi", "r");  
+    //FILE* fin = fopen("/sdcard/Sam720N.avi", "r");  
     if (fin == NULL) {
        ESP_LOGE(TAG, "Failed to open file for reading");
        return;
     }
-    
-    // Display brightness
-    ft81x_wr(REG_PWM_DUTY, 42);
 
+    // wakeup the display and set brightness
+    ft81x_wake(22);
+        
     // Set volume to MAX
     ft81x_wr(REG_VOL_SOUND,0x00);
     ft81x_wr(REG_VOL_PB,0xff);
@@ -331,7 +331,7 @@ void test_video()
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     fclose(fin);
-    stop_sdcard();
+    mysdcard_stop();
 #endif
 
 #if 1 // Live WEBCAM interface demo
